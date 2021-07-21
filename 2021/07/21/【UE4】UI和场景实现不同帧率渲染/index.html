@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    
+    <title>【UE4】UI和场景实现不同帧率渲染 | MashiroSky&#39;s Blog</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+<link rel="stylesheet" href="/dist/build.css?v=1623049492098.css">
+
+
+    <script>
+        window.isPost = true
+        window.aomori = {
+            
+            
+            
+        }
+        window.aomori_logo_typed_animated = false
+        window.aomori_search_algolia = false
+
+    </script>
+
+<meta name="generator" content="Hexo 5.4.0"></head>
+
+<body>
+
+    <div class="container">
+    <header class="header">
+        <div class="header-type">
+            
+            <div class="header-type-inner">
+                
+                    <a class="header-type-title" href="/">MashiroSky&#39;s Blog</a>
+                
+    
+                
+            </div>
+        </div>
+        <div class="header-menu">
+            <div class="header-menu-inner">
+                
+            </div>
+            <div class="header-menu-social">
+                
+            </div>
+        </div>
+
+        <div class="header-menu-mobile">
+            <div class="header-menu-mobile-inner" id="mobile-menu-open">
+                <i class="icon icon-menu"></i>
+            </div>
+        </div>
+    </header>
+
+    <div class="header-menu-mobile-menu">
+        <div class="header-menu-mobile-menu-bg"></div>
+        <div class="header-menu-mobile-menu-wrap">
+            <div class="header-menu-mobile-menu-inner">
+                <div class="header-menu-mobile-menu-close" id="mobile-menu-close">
+                    <i class="icon icon-cross"></i>
+                </div>
+                <div class="header-menu-mobile-menu-list">
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+    <div class="container">
+        <div class="main">
+            <section class="inner">
+                <section class="inner-main">
+                    <div class="post">
+    <article id="post-ckrcyaap90001ns3vd6e575o9" class="article article-type-post" itemscope
+    itemprop="blogPost">
+
+    <div class="article-inner">
+
+        
+          
+        
+        
+        
+
+        
+        <header class="article-header">
+            
+  
+    <h1 class="article-title" itemprop="name">
+      【UE4】UI和场景实现不同帧率渲染
+    </h1>
+  
+
+        </header>
+        
+
+        <div class="article-more-info article-more-info-post hairline">
+
+            <div class="article-date">
+  <time datetime="2021-07-21T03:26:01.000Z" itemprop="datePublished">2021-07-21</time>
+</div>
+
+            
+            <div class="article-category">
+                <a class="article-category-link" href="/categories/UE4/">UE4</a>
+            </div>
+            
+
+            
+            <div class="article-tag">
+                <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E6%B8%B2%E6%9F%93-UE4/" rel="tag">渲染 UE4</a></li></ul>
+            </div>
+            
+
+            
+
+        </div>
+
+        <div class="article-entry post-inner-html hairline" itemprop="articleBody">
+            <p>记，21年暑假在腾讯的实习项目。</p>
+<hr>
+<h3 id="UE4源码运行流程概览"><a href="#UE4源码运行流程概览" class="headerlink" title="UE4源码运行流程概览"></a>UE4源码运行流程概览</h3><p>在完成引擎的初始化之后，开始进入死循环<code>FEngineLoop::Tick()</code>，整个流程很复杂包含了大大小小各种功能和界面的更新，我们的目标是研究UE4是如何控制帧率的，所以我们只需要关注具体三个函数即可：</p>
+<p><img src="/2021/07/21/%E3%80%90UE4%E3%80%91UI%E5%92%8C%E5%9C%BA%E6%99%AF%E5%AE%9E%E7%8E%B0%E4%B8%8D%E5%90%8C%E5%B8%A7%E7%8E%87%E6%B8%B2%E6%9F%93/image-20210720143102804.png"></p>
+<span id="more"></span>
+
+<p><code>UpdateTimeAndHandleMaxTickRate()</code>是帧率控制的函数，里面包含对<code>FApp</code>类中时间成员的更新以及判断是否需要挂起线程wait一定的时间。</p>
+<p><code>GEngine-&gt;Tick(FApp::GetDeltaTime(), bIdleMode)</code>场景的绘制包含在这个函数中，第一个参数是时间步长，第二个参数是是否为闲置模式。</p>
+<p><code>FSlateApplication::Get().Tick(ESlateTickType::TimeAndWidgets)</code>是UI的绘制，UI绘制使用的时间步长是由<code>FSlateApplication</code>类自己维护的。</p>
+<p>下面具体看看这三个函数都干了些什么</p>
+<h3 id="帧率控制"><a href="#帧率控制" class="headerlink" title="帧率控制"></a>帧率控制</h3><p>按照程序的运行顺序，首先需要做的就是对<code>FApp</code>类中的时间成员变量进行更新，主要是三个变量：<code>LastTime</code>、<code>CurrentTime</code>、<code>DeltaTime</code>，分别表示上次进行Tick的时间，这次进行Tick的时间和间隔的时间。其中在未来需要用到的应该是只有一个<code>DeltaTime</code>，作为时间步长参与一些具体部件的Tick。一般情况下，这三个时间就是字面意思，直接在正确的时间正确的地点进行更新就可以了。需要考虑的特殊情况有：</p>
+<ol>
+<li><p><code>CustomTimeStep == 1</code>，暂时不知道啥意思。</p>
+<pre><code class="c++">if (CustomTimeStep) &#123;
+    bool bRunEngineCode = CustomTimeStep-&gt;UpdateTimeStep(this);
+    if (!bRunEngineCode) &#123;
+        UpdateTimecode();
+        return;
+    &#125;
+&#125;
+</code></pre>
+</li>
+<li><p><code>bUseFixedTimeStep == 1</code>，使用固定时间步长，保证<code>DeltaTime</code>始终为固定值，<code>CurrentTime</code>由<code>LastTime+DeltaTime</code>得到，可能会落后于实时时间。同时不需要进行wait。</p>
+<pre><code class="c++">if( bUseFixedTimeStep ) &#123;
+    const float FrameRate = FApp::GetFixedDeltaTime();
+    FApp::SetDeltaTime(FrameRate);
+    LastRealTime = FApp::GetCurrentTime();
+    FApp::SetCurrentTime(FApp::GetCurrentTime() + FApp::GetDeltaTime());
+&#125;
+</code></pre>
+</li>
+<li><p><code>bUseFixedTimeStep != bPreviousFixedTimeStep </code>，时间步长设置发生变化由固定时间步长改为普通模式，此时需要<code>CurrentTime</code>为实时时间，所以将<code>LastTime</code>设置为<code>CurrentTime - DeltaTime</code>。其中，当帧率固定的情况下<code>DeltaTime</code>为固定的时间间隔。这里注意一点：固定帧率和固定时间步长不是一个概念。</p>
+<pre><code class="c++">if (bUseFixedTimeStep != bPreviousUseFixedTimeStep) &#123;
+    if (bUseFixedFrameRate) &#123;
+        LastRealTime = CurrentRealTime - (1.0 / FixedFrameRate);
+    &#125;
+    else &#123;
+        LastRealTime = CurrentRealTime - FApp::GetDeltaTime();
+    &#125;
+    bTimeWasManipulated = false;
+&#125;
+</code></pre>
+</li>
+</ol>
+<p>接下来就是wait阶段，首先是计算需要等待的时间：</p>
+<pre><code class="c++">WaitTime = FMath::Max( 1.f / MaxTickRate - DeltaRealTime, 0.f );
+</code></pre>
+<p>然后开始wait，wait的机制很简单，当<code>WaitTime</code>&gt;5 ms，每次循环等待5 ms方便调试，非编辑器模式或者节能模式就直接等待<code>WaitTime</code> - 2 ms。最后循环切换时间片等待时间到。然后更新<code>FApp</code>。</p>
+<pre><code class="c++">if( WaitTime &gt; 0 ) &#123;
+    double WaitEndTime = CurrentRealTime + WaitTime;
+
+    if (!bMaxTickRateHandled) &#123;
+        if (IsRunningDedicatedServer()) &#123;
+            FPlatformProcess::SleepNoStats(WaitTime);
+        &#125;
+        else &#123;
+            if (WaitTime &gt; 5 / 1000.f) &#123;
+                if (GIsEditor &amp;&amp; ShouldThrottleCPUUsage()) &#123;
+                    do &#123;
+                        FPlatformProcess::SleepNoStats(0.005f);
+                        FPlatformApplicationMisc::PumpMessages(true);
+                    &#125; while (ShouldThrottleCPUUsage() &amp;&amp; FPlatformTime::Seconds() &lt; (WaitEndTime - 0.005f));
+                &#125;
+                else &#123;
+                    FPlatformProcess::SleepNoStats(WaitTime - 0.002f);
+                &#125;
+            &#125;
+            while (FPlatformTime::Seconds() &lt; WaitEndTime) &#123;
+                FPlatformProcess::SleepNoStats(0);
+            &#125;
+        &#125;
+    &#125;
+    CurrentRealTime = FPlatformTime::Seconds();
+    if(bUseFixedFrameRate) &#123;
+        const double FrameTime = 1.0 / FixedFrameRate;
+        FApp::SetCurrentTime(LastRealTime + FrameTime);
+        bTimeWasManipulated = true;
+    &#125;
+    else &#123;
+        FApp::SetCurrentTime(CurrentRealTime);
+    &#125;
+&#125;
+</code></pre>
+<p>渲染时间过长的情况下，如果使用了固定帧率，也要对<code>CurrentTime</code>进行调整：</p>
+<pre><code class="c++">else if(bUseFixedFrameRate &amp;&amp; MaxTickRate == FixedFrameRate) &#123;
+    const double FrameTime = 1.0 / FixedFrameRate;
+    FApp::SetCurrentTime(LastRealTime + FrameTime);
+&#125;
+</code></pre>
+<h3 id="实现UI和场景分帧运行"><a href="#实现UI和场景分帧运行" class="headerlink" title="实现UI和场景分帧运行"></a>实现UI和场景分帧运行</h3><p>在<code>UEngine</code>类中添加成员变量，同时把变量的控制暴露在编辑器的项目设置中：</p>
+<pre><code class="c++">    UPROPERTY(config, EditAnywhere, Category=Framerate, meta=(EditCondition=&quot;!bUseFixedFrameRate&quot;))
+    uint32 bUseRespectiveFrameRate : 1;
+
+    UPROPERTY(config, EditAnywhere, Category=FrameRate, meta=(EditCondition=&quot;bUseRespectiveFrameRate&quot;, ClampMin = &quot;15.0&quot;))
+    float FixedSceneFrameRate;
+
+    UPROPERTY(config, EditAnywhere, Category = FrameRate, meta = (EditCondition = &quot;bUseRespectiveFrameRate&quot;, ClampMin = &quot;15.0&quot;))
+    float FixedUIFrameRate;
+</code></pre>
+<h4 id="策略"><a href="#策略" class="headerlink" title="策略"></a>策略</h4><p>游戏线程的每一帧就是wait-&gt;场景绘制-&gt;UI绘制的一个过程，所以我的想法是，在<code>GEngine-&gt;Tick()</code>中分别记录场景上次绘制的时间<code>LastSceneTime</code>和UI上次绘制的时间<code>LastUITime</code>，在执行场景绘制和UI绘制的函数之前判断当前实时时间<code>CurrentRealTime</code>-<code>LastTime</code>是否已经超过它们各自一帧的时间了；wait的判断也是如此：当前游戏线程的一帧下，是否是场景一帧和UI一帧的绘制都已经完成并且还有剩余时间。</p>
+<p><img src="/2021/07/21/%E3%80%90UE4%E3%80%91UI%E5%92%8C%E5%9C%BA%E6%99%AF%E5%AE%9E%E7%8E%B0%E4%B8%8D%E5%90%8C%E5%B8%A7%E7%8E%87%E6%B8%B2%E6%9F%93/2021-07-21-111626.png"></p>
+<h4 id="代码"><a href="#代码" class="headerlink" title="代码"></a>代码</h4><p><code>UnrealEngine.cpp</code></p>
+<pre><code class="c++">void UEngine::UpdateTimeAndHandleMaxTickRate_(double LastSceneTime, double LastUITime, double &amp;CurrentRealTime) &#123;
+    if (CustomTimeStep) &#123;
+        bool bRunEngineCode = CustomTimeStep-&gt;UpdateTimeStep(this);
+        if (!bRunEngineCode) &#123;
+            UpdateTimecode();
+            return;
+        &#125;
+    &#125;
+    
+    const bool bUseFixedTimeStep = FApp::IsBenchmarking() || FApp::UseFixedTimeStep();
+    static bool bPreviousUseFixedTimeStep = bUseFixedTimeStep;
+
+    if (bUseFixedTimeStep) &#123;
+        FApp::SetDeltaTime(FApp::GetFixedDeltaTime());
+        FApp::SetCurrentTime(FApp::GetCurrentTime() + FApp::GetDeltaTime());
+    &#125;
+    else &#123;
+        CurrentRealTime = FPlatformTime::Seconds();
+        FApp::SetCurrentTime(CurrentRealTime);
+        if (bUseFixedTimeStep != bPreviousUseFixedTimeStep)
+            LastSceneTime = CurrentRealTime - (1.0 / FixedSceneFrameRate);
+        float DeltaSceneTime = CurrentRealTime - LastSceneTime;
+        float DeltaUITime = CurrentRealTime - LastUITime;
+        if (DeltaSceneTime &lt; 0)
+            DeltaSceneTime = CorrectNegativeTimeDelta(DeltaSceneTime);
+        float WaitTime = FMath::Min(FMath::Max(0.0, 1.0/FixedSceneFrameRate - DeltaSceneTime), FMath::Max(1.0/FixedUIFrameRate - DeltaUITime, 0.0));
+        double ActualWaitTime = 0;
+        if (WaitTime &gt; 0) &#123;
+            double WaitEndTime = CurrentRealTime + WaitTime;
+            if (IsRunningDedicatedServer())
+                FPlatformProcess::SleepNoStats(WaitTime);
+            else &#123;
+                if (WaitTime &gt; 5 / 1000.f) &#123;
+                    if (GIsEditor &amp;&amp; ShouldThrottleCPUUsage())
+                        do &#123;
+                            FPlatformProcess::SleepNoStats(0.005f);
+                        &#125; while (ShouldThrottleCPUUsage() &amp;&amp; FPlatformTime::Seconds() &lt; (WaitEndTime - 0.005f));
+                    else FPlatformProcess::SleepNoStats(WaitTime - 0.002f);
+                &#125;
+                while (FPlatformTime::Seconds() &lt; WaitEndTime)
+                    FPlatformProcess::SleepNoStats(0);
+            &#125;
+        &#125;
+        CurrentRealTime = FPlatformTime::Seconds();
+        FApp::SetCurrentTime(LastSceneTime + 1.0 / FixedSceneFrameRate);
+        double AdditionalWaitTime = ActualWaitTime - static_cast&lt;double&gt;(WaitTime);
+        double AdditionalWaitTimeInMs = AdditionalWaitTime * 1000.0;
+        FApp::SetDeltaTime(FApp::GetCurrentTime() - LastSceneTime);
+        FApp::SetIdleTime(ActualWaitTime);
+        FApp::SetIdleTimeOvershoot(FMath::Max(0.0, AdditionalWaitTime));
+        if (FApp::GetDeltaTime() &lt; 0) &#123;
+#if PLATFORM_ANDROID
+            UE_LOG(LogEngine, Warning, TEXT(&quot;Detected negative delta time - ignoring&quot;));
+#else
+            // AMD dual-core systems are a known issue that require AMD CPU drivers to be installed. Installer will take care of this for shipping.
+            UE_LOG(LogEngine, Fatal, TEXT(&quot;Detected negative delta time - on AMD systems please install http://files.aoaforums.com/I3199-setup.zip.html&quot;));
+#endif
+            FApp::SetDeltaTime(0.01);
+        &#125;
+        UGameEngine* GameEngine = Cast&lt;UGameEngine&gt;(this);
+        const float MaxDeltaTime = GameEngine ? GameEngine-&gt;MaxDeltaTime : 0.f;
+        if (MaxDeltaTime &gt; 0.f) &#123;
+            UWorld* World = NULL;
+            int32 NumGamePlayers = 0;
+            for (int32 WorldIndex = 0; WorldIndex &lt; WorldList.Num(); WorldIndex++)
+                if (WorldList[WorldIndex].WorldType == EWorldType::Game &amp;&amp; WorldList[WorldIndex].OwningGameInstance != NULL) &#123;
+                    World = WorldList[WorldIndex].World();
+                    NumGamePlayers = WorldList[WorldIndex].OwningGameInstance-&gt;GetNumLocalPlayers();
+                    break;
+                &#125;
+            if (World != NULL &amp;&amp; World-&gt;GetAuthGameMode() != NULL &amp;&amp; World-&gt;GetAuthGameMode()-&gt;GetNumPlayers() == NumGamePlayers) &#123;
+                FApp::SetDeltaTime(FMath::Min&lt;double&gt;(FApp::GetDeltaTime(), MaxDeltaTime));
+            &#125;
+        &#125;
+    
+    &#125;
+
+
+    bPreviousUseFixedTimeStep = bUseFixedTimeStep;
+    UpdateTimecode();
+&#125;
+</code></pre>
+<p><code>LaunchEngineLoop.cpp</code></p>
+<pre><code class="c++">void FEngineLoop::Tick()
+&#123;
+    static double FixedSceneFrameRate = GEngine-&gt;FixedSceneFrameRate, FixedUIFrameRate = GEngine-&gt;FixedUIFrameRate;
+    static double LastSceneTime = FPlatformTime::Seconds() - 0.001, LastUITime = FPlatformTime::Seconds() - 0.001;
+    static int CurrentSceneFrame = 0, CurrentUIFrame = 0;
+    double CurrentRealTime;
+    
+    /* ... */
+    
+    GEngine-&gt;bUseRespectiveFrameRate ? 
+        GEngine-&gt;UpdateTimeAndHandleMaxTickRate_(LastSceneTime, LastUITime, CurrentRealTime) : 
+    GEngine-&gt;UpdateTimeAndHandleMaxTickRate();
+
+    /* ... */
+    
+    if (!GEngine-&gt;bUseRespectiveFrameRate || FPlatformTime::Seconds() - LastSceneTime &gt;= 1.0 / FixedSceneFrameRate) &#123;
+        CurrentSceneFrame++;
+        LastSceneTime = CurrentRealTime;
+        GEngine-&gt;Tick(FApp::GetDeltaTime(), bIdleMode);
+    &#125;
+
+    /* ... */
+    
+    if (FSlateApplication::IsInitialized() &amp;&amp; !bIdleMode)
+        if (CVarEnableSlateRender.GetValueOnAnyThread())
+            if (!GEngine-&gt;bUseRespectiveFrameRate || FPlatformTime::Seconds() - LastUITime &gt;= 1.0 / FixedUIFrameRate) &#123;
+                LastUITime = CurrentRealTime;
+                CurrentUIFrame++;
+                FSlateApplication::Get().Tick(ESlateTickType::TimeAndWidgets);
+            &#125;
+</code></pre>
+
+        </div>
+
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+<nav class="article-nav">
+  
+  
+    <a href="/2021/07/19/%E5%9F%BA%E4%BA%8Ehexo%E5%92%8Cgithub%E7%9A%84%E5%8D%9A%E5%AE%A2%E6%90%AD%E5%BB%BA/" id="article-nav-older" class="article-nav-link-wrap">
+      <div class="article-nav-caption">上一篇</div>
+      <div class="article-nav-title">基于hexo和github的博客搭建</div>
+    </a>
+  
+</nav>
+
+
+    <section class="share">
+        <div class="share-title">分享</div>
+        <a class="share-item" target="_blank"
+            href="https://twitter.com/share?text=【UE4】UI和场景实现不同帧率渲染 - MashiroSky's Blog&url=http://example.com/2021/07/21/%E3%80%90UE4%E3%80%91UI%E5%92%8C%E5%9C%BA%E6%99%AF%E5%AE%9E%E7%8E%B0%E4%B8%8D%E5%90%8C%E5%B8%A7%E7%8E%87%E6%B8%B2%E6%9F%93/">
+            <box-icon type='logo' name='twitter'></box-icon>
+        </a>
+        <a class="share-item" target="_blank"
+            href="https://www.facebook.com/sharer.php?title=【UE4】UI和场景实现不同帧率渲染 - MashiroSky's Blog&u=http://example.com/2021/07/21/%E3%80%90UE4%E3%80%91UI%E5%92%8C%E5%9C%BA%E6%99%AF%E5%AE%9E%E7%8E%B0%E4%B8%8D%E5%90%8C%E5%B8%A7%E7%8E%87%E6%B8%B2%E6%9F%93/">
+            <box-icon name='facebook-square' type='logo' ></box-icon>
+        </a>
+        <!-- <a class="share-item" target="_blank"
+            href="https://service.weibo.com/share/share.php?title=【UE4】UI和场景实现不同帧率渲染 - MashiroSky's Blog&url=http://example.com/2021/07/21/%E3%80%90UE4%E3%80%91UI%E5%92%8C%E5%9C%BA%E6%99%AF%E5%AE%9E%E7%8E%B0%E4%B8%8D%E5%90%8C%E5%B8%A7%E7%8E%87%E6%B8%B2%E6%9F%93/&pic=">
+            <div class="n-icon n-icon-weibo"></div>
+        </a> -->
+    </section>
+
+</article>
+
+
+
+
+
+
+
+
+
+
+
+
+</div>
+                </section>
+            </section>
+
+            
+            <aside class="sidebar ">
+                
+
+
+<div class="widget" id="widget">
+    
+      
+  <div class="widget-wrap">
+    <div class="widget-inner">
+      <div class="toc post-toc-html"></div>
+    </div>
+  </div>
+
+    
+      
+  <div class="widget-wrap widget-cate">
+    <div class="widget-title"><span>Categories</span></div>
+    <div class="widget-inner">
+      <ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/UE4/">UE4</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E5%85%B6%E4%BB%96/">其他</a></li></ul>
+    </div>
+  </div>
+
+
+    
+      
+  <div class="widget-wrap widget-tags">
+    <div class="widget-title"><span>Tags</span></div>
+    <div class="widget-inner">
+      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E5%8D%9A%E5%AE%A2%E6%90%AD%E5%BB%BA/" rel="tag">博客搭建</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E6%B8%B2%E6%9F%93-UE4/" rel="tag">渲染 UE4</a></li></ul>
+    </div>
+  </div>
+
+
+    
+      
+  <div class="widget-wrap widget-recent-posts">
+    <div class="widget-title"><span>Recent Posts</span></div>
+    <div class="widget-inner">
+      <ul>
+        
+          <li>
+            <a href="/2021/07/21/%E3%80%90UE4%E3%80%91UI%E5%92%8C%E5%9C%BA%E6%99%AF%E5%AE%9E%E7%8E%B0%E4%B8%8D%E5%90%8C%E5%B8%A7%E7%8E%87%E6%B8%B2%E6%9F%93/">【UE4】UI和场景实现不同帧率渲染</a>
+          </li>
+        
+          <li>
+            <a href="/2021/07/19/%E5%9F%BA%E4%BA%8Ehexo%E5%92%8Cgithub%E7%9A%84%E5%8D%9A%E5%AE%A2%E6%90%AD%E5%BB%BA/">基于hexo和github的博客搭建</a>
+          </li>
+        
+          <li>
+            <a href="/2021/07/19/hello-world/">Hello World</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+    
+      
+  <div class="widget-wrap widget-archive">
+    <div class="widget-title"><span>Archive</span></div>
+    <div class="widget-inner">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2021/">2021</a></li></ul>
+    </div>
+  </div>
+
+
+    
+</div>
+
+<div id="backtop"><i class="icon icon-arrow-up"></i></div>
+            </aside>
+            
+        </div>
+    </div>
+
+    <footer class="footer">
+    <div class="footer-wave">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 320"><path fill="#3c4859" fill-opacity="1" d="M0,160L60,181.3C120,203,240,245,360,240C480,235,600,181,720,186.7C840,192,960,256,1080,261.3C1200,267,1320,213,1380,186.7L1440,160L1440,320L1380,320C1320,320,1200,320,1080,320C960,320,840,320,720,320C600,320,480,320,360,320C240,320,120,320,60,320L0,320Z"></path></svg>
+    </div>
+
+    <div class="footer-wrap">
+        <div class="footer-inner"> 
+            MashiroSky&#39;s Blog &copy; 2021<br>
+            Powered By Hexo · Theme By <a href="https://github.com/lh1me/hexo-theme-aomori" target="_blank">Aomori</a>
+        </div>
+    </div>
+
+</footer>
+
+
+
+
+
+
+<script src="/dist/build.js?1623049492098.js"></script>
+
+
+<script src="/dist/custom.js?1623049492098.js"></script>
+
+
+
+
+
+
+
+
+
+</body>
+
+</html>
