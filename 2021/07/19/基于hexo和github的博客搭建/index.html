@@ -32,7 +32,7 @@
             
             
         }
-        window.aomori_logo_typed_animated = false
+        window.aomori_logo_typed_animated = true
         window.aomori_search_algolia = false
 
     </script>
@@ -45,9 +45,16 @@
     <header class="header">
         <div class="header-type">
             
+            <div class="header-type-avatar avatar avatar-sm">
+                <img src="/images/avatar.jpg" alt="MashiroSky">
+            </div>
+            
             <div class="header-type-inner">
                 
-                    <a class="header-type-title" href="/">MashiroSky&#39;s Blog</a>
+                    <div id="typed-strings" style="display:none">
+                        <p>MashiroSky&#39;s Blog</p>
+                    </div>
+                    <a class="header-type-title" id="typed" href="/"></a>
                 
     
                 
@@ -55,6 +62,10 @@
         </div>
         <div class="header-menu">
             <div class="header-menu-inner">
+                
+                <a href="/">Home</a>
+                
+                <a href="/archives">Archives</a>
                 
             </div>
             <div class="header-menu-social">
@@ -77,6 +88,10 @@
                     <i class="icon icon-cross"></i>
                 </div>
                 <div class="header-menu-mobile-menu-list">
+                    
+                    <a href="/">Home</a>
+                    
+                    <a href="/archives">Archives</a>
                     
                 </div>
             </div>
@@ -137,6 +152,7 @@
 
         <div class="article-entry post-inner-html hairline" itemprop="articleBody">
             <p><a target="_blank" rel="noopener" href="http://blog.haoji.me/build-blog-website-by-hexo-github.html?from=xa">出门右转</a></p>
+<p><a target="_blank" rel="noopener" href="https://linhong.me/2020/01/27/hexo-theme-aomori/">主题</a></p>
 
         </div>
 
@@ -307,6 +323,22 @@
 <script src="/dist/custom.js?1623049492098.js"></script>
 
 
+
+<!-- 百度链接提交 -->
+<script>
+    (function () {
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https') {
+            bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+        }
+        else {
+            bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+        }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+</script>
 
 
 
