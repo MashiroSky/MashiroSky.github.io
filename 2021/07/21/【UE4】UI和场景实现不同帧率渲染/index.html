@@ -152,8 +152,7 @@
 
         <div class="article-entry post-inner-html hairline" itemprop="articleBody">
             <p>记，21年暑假在腾讯的实习项目。</p>
-<hr>
-<h3 id="UE4源码运行流程概览"><a href="#UE4源码运行流程概览" class="headerlink" title="UE4源码运行流程概览"></a>UE4源码运行流程概览</h3><p>在完成引擎的初始化之后，开始进入死循环<code>FEngineLoop::Tick()</code>，整个流程很复杂包含了大大小小各种功能和界面的更新，我们的目标是研究UE4是如何控制帧率的，所以我们只需要关注具体三个函数即可：</p>
+<h1 id="UE4源码运行流程概览"><a href="#UE4源码运行流程概览" class="headerlink" title="UE4源码运行流程概览"></a>UE4源码运行流程概览</h1><p>在完成引擎的初始化之后，开始进入死循环<code>FEngineLoop::Tick()</code>，整个流程很复杂包含了大大小小各种功能和界面的更新，我们的目标是研究UE4是如何控制帧率的，所以我们只需要关注具体三个函数即可：</p>
 <p><img src="/2021/07/21/%E3%80%90UE4%E3%80%91UI%E5%92%8C%E5%9C%BA%E6%99%AF%E5%AE%9E%E7%8E%B0%E4%B8%8D%E5%90%8C%E5%B8%A7%E7%8E%87%E6%B8%B2%E6%9F%93/image-20210720143102804.png"></p>
 <span id="more"></span>
 
@@ -161,7 +160,7 @@
 <p><code>GEngine-&gt;Tick(FApp::GetDeltaTime(), bIdleMode)</code>场景的绘制包含在这个函数中，第一个参数是时间步长，第二个参数是是否为闲置模式。</p>
 <p><code>FSlateApplication::Get().Tick(ESlateTickType::TimeAndWidgets)</code>是UI的绘制，UI绘制使用的时间步长是由<code>FSlateApplication</code>类自己维护的。</p>
 <p>下面具体看看这三个函数都干了些什么</p>
-<h3 id="帧率控制"><a href="#帧率控制" class="headerlink" title="帧率控制"></a>帧率控制</h3><p>按照程序的运行顺序，首先需要做的就是对<code>FApp</code>类中的时间成员变量进行更新，主要是三个变量：<code>LastTime</code>、<code>CurrentTime</code>、<code>DeltaTime</code>，分别表示上次进行Tick的时间，这次进行Tick的时间和间隔的时间。其中在未来需要用到的应该是只有一个<code>DeltaTime</code>，作为时间步长参与一些具体部件的Tick。一般情况下，这三个时间就是字面意思，直接在正确的时间正确的地点进行更新就可以了。需要考虑的特殊情况有：</p>
+<h1 id="帧率控制"><a href="#帧率控制" class="headerlink" title="帧率控制"></a>帧率控制</h1><p>按照程序的运行顺序，首先需要做的就是对<code>FApp</code>类中的时间成员变量进行更新，主要是三个变量：<code>LastTime</code>、<code>CurrentTime</code>、<code>DeltaTime</code>，分别表示上次进行Tick的时间，这次进行Tick的时间和间隔的时间。其中在未来需要用到的应该是只有一个<code>DeltaTime</code>，作为时间步长参与一些具体部件的Tick。一般情况下，这三个时间就是字面意思，直接在正确的时间正确的地点进行更新就可以了。需要考虑的特殊情况有：</p>
 <ol>
 <li><p><code>CustomTimeStep == 1</code>，暂时不知道啥意思。</p>
 <pre><code class="c++">if (CustomTimeStep) &#123;
@@ -240,7 +239,7 @@
     FApp::SetCurrentTime(LastRealTime + FrameTime);
 &#125;
 </code></pre>
-<h3 id="实现UI和场景分帧运行"><a href="#实现UI和场景分帧运行" class="headerlink" title="实现UI和场景分帧运行"></a>实现UI和场景分帧运行</h3><p>在<code>UEngine</code>类中添加成员变量，同时把变量的控制暴露在编辑器的项目设置中：</p>
+<h1 id="实现UI和场景分帧运行"><a href="#实现UI和场景分帧运行" class="headerlink" title="实现UI和场景分帧运行"></a>实现UI和场景分帧运行</h1><p>在<code>UEngine</code>类中添加成员变量，同时把变量的控制暴露在编辑器的项目设置中：</p>
 <pre><code class="c++">    UPROPERTY(config, EditAnywhere, Category=Framerate, meta=(EditCondition=&quot;!bUseFixedFrameRate&quot;))
     uint32 bUseRespectiveFrameRate : 1;
 
@@ -250,9 +249,9 @@
     UPROPERTY(config, EditAnywhere, Category = FrameRate, meta = (EditCondition = &quot;bUseRespectiveFrameRate&quot;, ClampMin = &quot;15.0&quot;))
     float FixedUIFrameRate;
 </code></pre>
-<h4 id="策略"><a href="#策略" class="headerlink" title="策略"></a>策略</h4><p>游戏线程的每一帧就是wait-&gt;场景绘制-&gt;UI绘制的一个过程，所以我的想法是，在<code>GEngine-&gt;Tick()</code>中分别记录场景上次绘制的时间<code>LastSceneTime</code>和UI上次绘制的时间<code>LastUITime</code>，在执行场景绘制和UI绘制的函数之前判断当前实时时间<code>CurrentRealTime</code>-<code>LastTime</code>是否已经超过它们各自一帧的时间了；wait的判断也是如此：当前游戏线程的一帧下，是否是场景一帧和UI一帧的绘制都已经完成并且还有剩余时间。</p>
+<h2 id="策略"><a href="#策略" class="headerlink" title="策略"></a>策略</h2><p>游戏线程的每一帧就是wait-&gt;场景绘制-&gt;UI绘制的一个过程，所以我的想法是，在<code>GEngine-&gt;Tick()</code>中分别记录场景上次绘制的时间<code>LastSceneTime</code>和UI上次绘制的时间<code>LastUITime</code>，在执行场景绘制和UI绘制的函数之前判断当前实时时间<code>CurrentRealTime</code>-<code>LastTime</code>是否已经超过它们各自一帧的时间了；wait的判断也是如此：当前游戏线程的一帧下，是否是场景一帧和UI一帧的绘制都已经完成并且还有剩余时间。</p>
 <p><img src="/2021/07/21/%E3%80%90UE4%E3%80%91UI%E5%92%8C%E5%9C%BA%E6%99%AF%E5%AE%9E%E7%8E%B0%E4%B8%8D%E5%90%8C%E5%B8%A7%E7%8E%87%E6%B8%B2%E6%9F%93/2021-07-21-111626.png"></p>
-<h4 id="代码"><a href="#代码" class="headerlink" title="代码"></a>代码</h4><p><code>UnrealEngine.cpp</code></p>
+<h2 id="代码"><a href="#代码" class="headerlink" title="代码"></a>代码</h2><p><code>UnrealEngine.cpp</code></p>
 <pre><code class="c++">void UEngine::UpdateTimeAndHandleMaxTickRate_(double LastSceneTime, double LastUITime, double &amp;CurrentRealTime) &#123;
     if (CustomTimeStep) &#123;
         bool bRunEngineCode = CustomTimeStep-&gt;UpdateTimeStep(this);
